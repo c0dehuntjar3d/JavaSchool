@@ -11,7 +11,8 @@ import org.junit.jupiter.api.Test;
 import lombok.extern.slf4j.Slf4j;
 import sbp.school.kafka.model.Transaction;
 import sbp.school.kafka.model.Transaction.TransactionType;
-import sbp.school.kafka.service.TransactionProducerService;
+import sbp.school.kafka.service.transaction.TransactionConsumerService;
+import sbp.school.kafka.service.transaction.TransactionProducerService;
 
 @Slf4j
 public class Main {
@@ -23,11 +24,22 @@ public class Main {
         List<Transaction> transaction = getTestData();
         
         assertDoesNotThrow(() -> {
-            transaction.forEach(t -> producerService.send(t));
+            transaction.forEach(producerService::send);
         });
-
-        producerService.close();
+        assertDoesNotThrow(() -> producerService.close());
     }
+
+    @Test
+    public void testReadTransactionSuccess() {
+        TransactionConsumerService service = new TransactionConsumerService();
+        assertDoesNotThrow(() -> service.start());
+        
+        TransactionProducerService producerService = new TransactionProducerService();
+        List<Transaction> transaction = getTestData();
+        transaction.forEach(producerService::send);
+        
+        assertDoesNotThrow(() -> service.close());
+    } 
 
     public List<Transaction> getTestData() {
         return List.of(

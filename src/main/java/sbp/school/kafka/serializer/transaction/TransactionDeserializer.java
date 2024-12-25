@@ -2,15 +2,12 @@ package sbp.school.kafka.serializer.transaction;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import org.apache.kafka.common.errors.SerializationException;
 import org.apache.kafka.common.security.oauthbearer.secured.ValidateException;
-import org.apache.kafka.common.serialization.Serializer;
-
+import org.apache.kafka.common.serialization.Deserializer;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -23,7 +20,7 @@ import lombok.extern.slf4j.Slf4j;
 import sbp.school.kafka.model.Transaction;
 
 @Slf4j
-public class TransactionSerializer implements Serializer<Transaction> {
+public class TransactionDeserializer implements Deserializer<Transaction> {
 
     private static ObjectMapper transactionMapper;
     private static final String TRANSACTION_SCHEME_FILE_PATH = "src/main/resources/json/transaction.json"; 
@@ -41,43 +38,39 @@ public class TransactionSerializer implements Serializer<Transaction> {
     }
 
     @Override
-    public byte[] serialize(String topic, Transaction data) {
+    public Transaction deserialize(String topic, byte[] data) {
         if (data == null) {
             log.error("data is null for topic: {}", topic);
             return null;
         }
 
         ObjectMapper mapper = getTransactionMapper();
-        
-        try {            
+
+        try {
             JsonNode jsonSchema = mapper.readTree(new File(TRANSACTION_SCHEME_FILE_PATH));
-            String value = mapper.writeValueAsString(data);
-            JsonNode jsonValue = mapper.readTree(value);
+            JsonNode jsonValue = mapper.readTree(data);
 
             JsonSchemaFactory factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V7);
             JsonSchema schema = factory.getSchema(jsonSchema);
 
-            validate(schema.validate(jsonValue), value); 
+            validate(schema.validate(jsonValue)); 
 
-            return value.getBytes(StandardCharsets.UTF_8);            
-        } catch (SerializationException e) {
-            log.error("serialize error for {}: {}", data, e.getMessage());
-            throw new RuntimeException(e);
+            return mapper.readValue(data, Transaction.class);
         } catch (IOException e) {
-            log.error("file error: {}", e.getMessage());
+            System.out.println("JsonProcessingException: " + e.getMessage());
             throw new RuntimeException(e);
         }
     }
-    
-    private void validate(Set<ValidationMessage> validationMessages, String value) {
+
+    private void validate(Set<ValidationMessage> validationMessages) {
         if (!validationMessages.isEmpty()) {
             String validationExceptionMessages = validationMessages.stream()
                     .map(ValidationMessage::getMessage)
                     .collect(Collectors.joining(", "));
 
-            log.error("validation error for: {}, {}", value, validationExceptionMessages);
+            log.error("validation error for: {}", validationExceptionMessages);
             throw new ValidateException(validationExceptionMessages);
         }
     }
-
+   
 }

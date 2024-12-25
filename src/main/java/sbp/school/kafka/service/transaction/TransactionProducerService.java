@@ -1,7 +1,8 @@
-package sbp.school.kafka.service;
+package sbp.school.kafka.service.transaction;
 
 import sbp.school.kafka.config.transaction.KafkaTransactionProperties;
 import sbp.school.kafka.model.Transaction;
+import sbp.school.kafka.service.KafkaProducerFactory;
 
 import java.util.concurrent.Future;
 
@@ -40,7 +41,7 @@ public class TransactionProducerService {
                 recordMetadata.offset()
             );
         } catch (Exception e) {
-            log.error("error sending message to {}: {}", transactionTopic, transaction);
+            log.error("error sending message to {}: {}. {}", transactionTopic, transaction, e);
         }
     }
 
