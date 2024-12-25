@@ -3,8 +3,10 @@ package sbp.school.kafka.model;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.ToString;
 
@@ -12,6 +14,8 @@ import lombok.ToString;
 @Setter
 @Builder
 @ToString
+@NoArgsConstructor
+@AllArgsConstructor
 public class Transaction {
 
     @Getter
@@ -29,10 +33,10 @@ public class Transaction {
         private String name;
     }
 
-    private long id;
+    private String id;
     private TransactionType type;
     private BigDecimal value;
     private String account;
-    private LocalDateTime date;    
+    private LocalDateTime date;
 
 }
