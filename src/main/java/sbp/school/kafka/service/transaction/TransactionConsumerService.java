@@ -29,8 +29,10 @@ public class TransactionConsumerService {
     private final ExecutorService executorService;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final long duration;
+    private final Integer commitMaxProccessed;
 
     public TransactionConsumerService(OutboxStorage storage) {
+        this.commitMaxProccessed = KafkaTransactionProperties.getCommitMaxProcessed();
         this.transactionTopic = KafkaTransactionProperties.getTopic();
         this.executorService = Executors.newFixedThreadPool(KafkaTransactionProperties.PARTITIONS.size());
         this.duration = KafkaConsumerProperties.getCommitTimeout();
@@ -56,28 +58,36 @@ public class TransactionConsumerService {
         log.info("Started consumer for partition {}", partition.partition());
 
         Map<TopicPartition, OffsetAndMetadata> currentOffsets = new HashMap<>();
+        OffsetAndMetadata prevOffsetAndMetadata = null;
+        AsyncCallback asyncCallback = new AsyncCallback(transactionTopic);
 
         try {
             while (running.get()) {
                 long startTime = System.currentTimeMillis();
                 int procceedRecords = 0;
-
                 ConsumerRecords<String, Transaction> records = consumer.poll(Duration.ofMillis(100));
 
                 for (ConsumerRecord<String, Transaction> record : records) {
                     processRecord(record);
-
                     currentOffsets.put(partition, new OffsetAndMetadata(record.offset() + 1));
                     procceedRecords++;
-
-                    if (procceedRecords % 50 == 0 || System.currentTimeMillis() - startTime > duration) {
-                        consumer.commitAsync(currentOffsets, new AsyncCallback(transactionTopic));
-                        startTime = System.currentTimeMillis();
-                    }
                 }
 
-            }
+                if (procceedRecords % commitMaxProccessed == 0 || System.currentTimeMillis() - startTime > duration) {
+                    boolean needCommit = currentOffsets.get(partition) != null
+                            && !currentOffsets.get(partition).equals(prevOffsetAndMetadata);
 
+                    if (needCommit) {
+                        consumer.commitAsync(currentOffsets, asyncCallback);
+                        prevOffsetAndMetadata = currentOffsets.get(partition);
+
+                        startTime = System.currentTimeMillis();
+                        procceedRecords = 0;
+                    }
+
+
+                }
+            }
         } catch (Exception e) {
             log.error(
                     "Error processing partition {}. {} {}",
