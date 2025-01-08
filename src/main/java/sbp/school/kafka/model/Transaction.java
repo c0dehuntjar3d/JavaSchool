@@ -33,10 +33,10 @@ public class Transaction {
         private String name;
     }
 
-    private long id;
+    private String id;
     private TransactionType type;
     private BigDecimal value;
     private String account;
-    private LocalDateTime date;    
+    private LocalDateTime date;
 
 }
