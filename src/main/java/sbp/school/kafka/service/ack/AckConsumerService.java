@@ -39,12 +39,12 @@ public class AckConsumerService extends Thread {
         this.storage = storage;
         this.executorService = Executors.newFixedThreadPool(1);
         this.consumer = new KafkaConsumer<>(properties);
-        this.topic = KafkaTransactionProperties.getAcktTopioc();
+        this.topic = KafkaTransactionProperties.getAckTopic();
     }
 
     public void start() {
         running.set(true);
-        executorService.submit(this::consume);
+        executorService.submit(() -> consume());
     }
 
     public void close() {
@@ -52,7 +52,8 @@ public class AckConsumerService extends Thread {
     }
 
     private void consume() {
-        consumer.subscribe(Collections.singletonList(topic));
+        consumer.assign(Collections.singletonList(new TopicPartition(topic, 0)));
+        log.info("Started ack consumer");
 
         try {
             while (running.get()) {
@@ -97,7 +98,7 @@ public class AckConsumerService extends Thread {
 
         Ack ack = record.value();
 
-        long timeSliceId = ack.getTimeSliceId();
+        long timeSliceId = ack.getId();
         String checksum = storage.getChecksum(timeSliceId);
 
         if (checksum == null) {
@@ -110,7 +111,7 @@ public class AckConsumerService extends Thread {
             log.info(
                     "ack recieved and processed success:\n ProducerId: {}, key: {}",
                     producerId,
-                    ack.getTimeSliceId());
+                    ack.getId());
             return;
         } else {
             log.warn(

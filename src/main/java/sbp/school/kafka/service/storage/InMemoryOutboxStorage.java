@@ -7,9 +7,13 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
+import lombok.ToString;
+import lombok.extern.slf4j.Slf4j;
 import sbp.school.kafka.model.Transaction;
 import sbp.school.kafka.service.checksum.ChecksumHelper;
 
+@Slf4j
+@ToString
 public class InMemoryOutboxStorage implements OutboxStorage {
 
     private final Map<Long, List<Transaction>> sent = new ConcurrentHashMap<>();
@@ -21,7 +25,7 @@ public class InMemoryOutboxStorage implements OutboxStorage {
         sent.computeIfAbsent(timeSliceKey, l -> new ArrayList<>()).add(tx);
 
         List<String> txIds = sent.get(timeSliceKey).stream().map(Transaction::getId).toList();
-        String checksumForTimeSlice = ChecksumHelper.calculateChecksum(txIds);
+        String checksumForTimeSlice = ChecksumHelper.calculateChecksum(new ArrayList<>(txIds));
 
         checksum.put(timeSliceKey, checksumForTimeSlice);
     }
@@ -70,6 +74,7 @@ public class InMemoryOutboxStorage implements OutboxStorage {
 
     @Override
     public void clear(Long timeSlice) {
+        log.info("clearing... {}", timeSlice);
         sent.remove(timeSlice);
         checksum.remove(timeSlice);
     }
@@ -77,6 +82,18 @@ public class InMemoryOutboxStorage implements OutboxStorage {
     @Override
     public List<Transaction> getSent(long key) {
         return sent.get(key);
+    }
+
+    @Override
+    public void clear() {
+        sent.clear();
+        checksum.clear();
+        inProgress.clear();
+    }
+
+    @Override
+    public Set<Long> getTimeSlices() {
+        return sent.keySet();
     }
     
 }

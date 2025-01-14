@@ -3,6 +3,7 @@ package sbp.school.kafka.service.checksum;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Collections;
 import java.util.List;
 
 import lombok.experimental.UtilityClass;
@@ -17,6 +18,7 @@ public class ChecksumHelper {
             return null;
         }
 
+        Collections.sort(txIds);
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             String combined = String.join(",", txIds);

@@ -20,18 +20,25 @@ import sbp.school.kafka.config.transaction.KafkaTransactionProperties;
 import sbp.school.kafka.model.Transaction;
 import sbp.school.kafka.service.AsyncCallback;
 import sbp.school.kafka.service.KafkaConsumerFactory;
-import sbp.school.kafka.service.storage.OutboxStorage;
+import sbp.school.kafka.service.storage.InboxStorage;
+import sbp.school.kafka.service.time.TimeSliceHelper;
 
 @Slf4j
 public class TransactionConsumerService {
 
-    private final String transactionTopic;
+    private final String topic;
     private final ExecutorService executorService;
     private final AtomicBoolean running = new AtomicBoolean(false);
+    private final InboxStorage storage;
     private final long duration;
+    private final Duration timeout;
+    private final Integer commitMaxProccessed;
 
-    public TransactionConsumerService(OutboxStorage storage) {
-        this.transactionTopic = KafkaTransactionProperties.getTopic();
+    public TransactionConsumerService(InboxStorage storage) {
+        this.storage = storage;
+        this.commitMaxProccessed = KafkaTransactionProperties.getCommitMaxProcessed();
+        this.timeout = KafkaTransactionProperties.getAckTime();
+        this.topic = KafkaTransactionProperties.getTopic();
         this.executorService = Executors.newFixedThreadPool(KafkaTransactionProperties.PARTITIONS.size());
         this.duration = KafkaConsumerProperties.getCommitTimeout();
     }
@@ -41,7 +48,7 @@ public class TransactionConsumerService {
 
         for (Integer partitionIndex : KafkaTransactionProperties.PARTITIONS.values()) {
             executorService.submit(
-                    () -> consumePartition(new TopicPartition(transactionTopic, partitionIndex)));
+                    () -> consumePartition(new TopicPartition(topic, partitionIndex)));
         }
     }
 
@@ -56,6 +63,8 @@ public class TransactionConsumerService {
         log.info("Started consumer for partition {}", partition.partition());
 
         Map<TopicPartition, OffsetAndMetadata> currentOffsets = new HashMap<>();
+        OffsetAndMetadata prevOffsetAndMetadata = null;
+        AsyncCallback asyncCallback = new AsyncCallback(topic);
 
         try {
             while (running.get()) {
@@ -65,17 +74,28 @@ public class TransactionConsumerService {
                 ConsumerRecords<String, Transaction> records = consumer.poll(Duration.ofMillis(100));
 
                 for (ConsumerRecord<String, Transaction> record : records) {
-                    processRecord(record);
+                    long timeSliceId = TimeSliceHelper.getTimeSlice(record.value().getDate(), timeout);
+                    storage.save(timeSliceId, record.value());
 
+                    processRecord(record);
                     currentOffsets.put(partition, new OffsetAndMetadata(record.offset() + 1));
                     procceedRecords++;
 
-                    if (procceedRecords % 50 == 0 || System.currentTimeMillis() - startTime > duration) {
-                        consumer.commitAsync(currentOffsets, new AsyncCallback(transactionTopic));
-                        startTime = System.currentTimeMillis();
-                    }
                 }
 
+                if (procceedRecords % commitMaxProccessed == 0 || System.currentTimeMillis() - startTime > duration) {
+                    boolean needCommit = currentOffsets.get(partition) != null
+                            && !currentOffsets.get(partition).equals(prevOffsetAndMetadata);
+
+                    if (needCommit) {
+                        consumer.commitAsync(currentOffsets, asyncCallback);
+                        prevOffsetAndMetadata = currentOffsets.get(partition);
+
+                        startTime = System.currentTimeMillis();
+                        procceedRecords = 0;
+                    }
+
+                }
             }
 
         } catch (Exception e) {
