@@ -43,12 +43,12 @@ public class AckConsumerService {
         this.producer = producer;
         this.executorService = Executors.newFixedThreadPool(1);
         this.consumer = new KafkaConsumer<>(properties);
-        this.topic = KafkaTransactionProperties.getAcktTopioc();
+        this.topic = KafkaTransactionProperties.getAckTopic();
     }
 
     public void start() {
         running.set(true);
-        executorService.submit(this::consume);
+        executorService.submit(() -> consume());
     }
 
     public void close() {

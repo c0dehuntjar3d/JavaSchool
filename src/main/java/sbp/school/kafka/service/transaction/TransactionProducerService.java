@@ -12,7 +12,6 @@ import org.apache.kafka.clients.producer.RecordMetadata;
 
 import lombok.extern.slf4j.Slf4j;
 import sbp.school.kafka.config.KafkaProperties;
-import sbp.school.kafka.config.transaction.KafkaProducerProperties;
 import sbp.school.kafka.config.transaction.KafkaTransactionProperties;
 import sbp.school.kafka.model.Transaction;
 import sbp.school.kafka.service.KafkaProducerFactory;
@@ -21,7 +20,6 @@ import sbp.school.kafka.service.time.TimeSliceHelper;
 
 @Slf4j
 public class TransactionProducerService extends Thread {
-
 
     private final String id;
     private final String transactionTopic;
@@ -34,7 +32,7 @@ public class TransactionProducerService extends Thread {
     public TransactionProducerService(String id, OutboxStorage storage) {
         this.id = id;
         this.storage = storage;
-        this.timeout = KafkaProducerProperties.getAckTime();
+        this.timeout = KafkaTransactionProperties.getAckTime();
         this.transactionTopic = KafkaTransactionProperties.getTopic();
         this.producer = KafkaProducerFactory.getProducer();
     }
@@ -72,6 +70,7 @@ public class TransactionProducerService extends Thread {
 
     @Override
     public void run() {
+        log.info("starting to resend");
         resend();
     }
 
@@ -83,29 +82,30 @@ public class TransactionProducerService extends Thread {
 
         LocalDateTime now = LocalDateTime.now();
         long newTimeSliceId = TimeSliceHelper.getTimeSlice(now, timeout);
-
         Set<Long> timeSlicesToRetry = storage.getSentKeysFiltered(newTimeSliceId);
 
+        log.info("tmp key: {} | keys to resend: {}", newTimeSliceId, timeSlicesToRetry);
+
         timeSlicesToRetry.forEach(slice -> {
+            log.info("resend tx: {}", slice);
+
             resendTransactions(slice, now);
             storage.clear(slice);
-
-            log.info("resend tx: {}", slice);
         });
     }
 
     public void resendTransactions(long timeSliceId, LocalDateTime time) {
-        List<Transaction> transactions = storage.getSent(timeSliceId);
+        List<Transaction> txs = storage.getSent(timeSliceId);
 
-        transactions.forEach(t -> {
-            Transaction newTransaction = Transaction.builder()
-                    .id(t.getId())
-                    .type(t.getType())
-                    .value(t.getValue())
-                    .account(t.getAccount())
+        txs.forEach(tx -> {
+            Transaction newTx = Transaction.builder()
+                    .id(tx.getId())
+                    .type(tx.getType())
+                    .value(tx.getValue())
+                    .account(tx.getAccount())
                     .date(time)
                     .build();
-            send(newTransaction);
+            send(newTx);
         });
     }
 

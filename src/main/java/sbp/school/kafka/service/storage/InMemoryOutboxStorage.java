@@ -78,6 +78,7 @@ public class InMemoryOutboxStorage implements OutboxStorage {
 
     @Override
     public void clear(Long timeSlice) {
+        log.info("clearing... {}", timeSlice);
         sent.remove(timeSlice);
         checksum.remove(timeSlice);
     }
@@ -87,4 +88,16 @@ public class InMemoryOutboxStorage implements OutboxStorage {
         return sent.get(key);
     }
 
+    @Override
+    public void clear() {
+        sent.clear();
+        checksum.clear();
+        inProgress.clear();
+    }
+
+    @Override
+    public Set<Long> getTimeSlices() {
+        return sent.keySet();
+    }
+    
 }

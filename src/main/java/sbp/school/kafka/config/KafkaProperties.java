@@ -14,9 +14,6 @@ public class KafkaProperties {
     public static final String APPLICATION_PROPERTIES_FILE = "application.properties";
     public static final String PRODUCER_ID_PARAM = "Producer-id";
 
-    private static Properties producerProps;
-    private static Properties consumerProps;
-
     public static Set<String> producerPropsSet = Set.of(
             ProducerConfig.BOOTSTRAP_SERVERS_CONFIG,
             ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG,
@@ -32,38 +29,29 @@ public class KafkaProperties {
             ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,
             ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG,
             ConsumerConfig.MAX_POLL_INTERVAL_MS_CONFIG,
+            ConsumerConfig.AUTO_OFFSET_RESET_CONFIG,
             ConsumerConfig.MAX_POLL_RECORDS_CONFIG);
 
     public static Properties getConsumerKafkaProperties() {
-        if (consumerProps != null) {
-            return consumerProps;
-        }
-
         Properties fileProps = PropertiesLoader.getProperties();
         Properties appProps = new Properties();
 
         consumerPropsSet.forEach(prop -> {
             putProperty(appProps, fileProps, prop);
         });
-        consumerProps = appProps;
 
-        return consumerProps;
+        return appProps;
     }
 
     public static Properties getProducerKafkaProperties() {
-        if (producerProps != null) {
-            return producerProps;
-        }
-
         Properties fileProps = PropertiesLoader.getProperties();
         Properties appProps = new Properties();
 
         producerPropsSet.forEach(prop -> {
             putProperty(appProps, fileProps, prop);
         });
-        producerProps = appProps;
 
-        return producerProps;
+        return appProps;
     }
 
     public static String getProperty(String key) {

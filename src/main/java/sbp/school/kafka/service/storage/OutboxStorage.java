@@ -9,6 +9,7 @@ import sbp.school.kafka.model.Transaction;
 public interface OutboxStorage {
     
     Set<Long> getSentKeysFiltered(long timeoutTimeSlice);
+    Set<Long> getTimeSlices();
     List<Transaction> getSent(long key);
     void saveSent(long timeSliceKey, Transaction transaction);
     void deleteSent(long timeSliceKey);
@@ -21,4 +22,5 @@ public interface OutboxStorage {
     String getChecksum(long timeSliceKey);
 
     void clear(Long timeSlice);
+    void clear();
 }

@@ -20,20 +20,25 @@ import sbp.school.kafka.config.transaction.KafkaTransactionProperties;
 import sbp.school.kafka.model.Transaction;
 import sbp.school.kafka.service.AsyncCallback;
 import sbp.school.kafka.service.KafkaConsumerFactory;
-import sbp.school.kafka.service.storage.OutboxStorage;
+import sbp.school.kafka.service.storage.InboxStorage;
+import sbp.school.kafka.service.time.TimeSliceHelper;
 
 @Slf4j
 public class TransactionConsumerService {
 
-    private final String transactionTopic;
+    private final String topic;
     private final ExecutorService executorService;
     private final AtomicBoolean running = new AtomicBoolean(false);
+    private final InboxStorage storage;
     private final long duration;
+    private final Duration timeout;
     private final Integer commitMaxProccessed;
 
-    public TransactionConsumerService(OutboxStorage storage) {
+    public TransactionConsumerService(InboxStorage storage) {
+        this.storage = storage;
         this.commitMaxProccessed = KafkaTransactionProperties.getCommitMaxProcessed();
-        this.transactionTopic = KafkaTransactionProperties.getTopic();
+        this.timeout = KafkaTransactionProperties.getAckTime();
+        this.topic = KafkaTransactionProperties.getTopic();
         this.executorService = Executors.newFixedThreadPool(KafkaTransactionProperties.PARTITIONS.size());
         this.duration = KafkaConsumerProperties.getCommitTimeout();
     }
@@ -43,7 +48,7 @@ public class TransactionConsumerService {
 
         for (Integer partitionIndex : KafkaTransactionProperties.PARTITIONS.values()) {
             executorService.submit(
-                    () -> consumePartition(new TopicPartition(transactionTopic, partitionIndex)));
+                    () -> consumePartition(new TopicPartition(topic, partitionIndex)));
         }
     }
 
@@ -59,40 +64,38 @@ public class TransactionConsumerService {
 
         Map<TopicPartition, OffsetAndMetadata> currentOffsets = new HashMap<>();
         OffsetAndMetadata prevOffsetAndMetadata = null;
-        AsyncCallback asyncCallback = new AsyncCallback(transactionTopic);
+        AsyncCallback asyncCallback = new AsyncCallback(topic);
 
         try {
             while (running.get()) {
                 long startTime = System.currentTimeMillis();
-                int procceedRecords = 0;
+                int processedRecords = 0;
                 ConsumerRecords<String, Transaction> records = consumer.poll(Duration.ofMillis(100));
 
                 for (ConsumerRecord<String, Transaction> record : records) {
+                    long timeSliceId = TimeSliceHelper.getTimeSlice(record.value().getDate(), timeout);
+                    storage.save(timeSliceId, record.value());
+
                     processRecord(record);
                     currentOffsets.put(partition, new OffsetAndMetadata(record.offset() + 1));
-                    procceedRecords++;
+                    processedRecords++;
                 }
 
-                if (procceedRecords % commitMaxProccessed == 0 || System.currentTimeMillis() - startTime > duration) {
-                    boolean needCommit = currentOffsets.get(partition) != null
-                            && !currentOffsets.get(partition).equals(prevOffsetAndMetadata);
+                boolean needCommit = processedRecords % commitMaxProccessed == 0 ||
+                        System.currentTimeMillis() - startTime > duration;
 
-                    if (needCommit) {
-                        consumer.commitAsync(currentOffsets, asyncCallback);
-                        prevOffsetAndMetadata = currentOffsets.get(partition);
+                if (needCommit && currentOffsets.get(partition) != null &&
+                        !currentOffsets.get(partition).equals(prevOffsetAndMetadata)) {
 
-                        startTime = System.currentTimeMillis();
-                        procceedRecords = 0;
-                    }
+                    consumer.commitAsync(currentOffsets, asyncCallback);
+                    prevOffsetAndMetadata = currentOffsets.get(partition);
 
-
+                    startTime = System.currentTimeMillis();
+                    processedRecords = 0;
                 }
             }
         } catch (Exception e) {
-            log.error(
-                    "Error processing partition {}. {} {}",
-                    partition.partition(),
-                    Thread.currentThread().getName(),
+            log.error("Error processing partition {}. {} {}", partition.partition(), Thread.currentThread().getName(),
                     e);
             throw new RuntimeException(e);
         } finally {
