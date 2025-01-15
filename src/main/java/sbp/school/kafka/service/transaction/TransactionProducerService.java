@@ -82,25 +82,26 @@ public class TransactionProducerService extends Thread {
         }
 
         LocalDateTime now = LocalDateTime.now();
-        long newTimeSliceId = TimeSliceHelper.getTimeSlice(now.minus(timeout), timeout);
+        long newTimeSliceId = TimeSliceHelper.getTimeSlice(now, timeout);
 
         Set<Long> timeSlicesToRetry = storage.getSentKeysFiltered(newTimeSliceId);
 
         timeSlicesToRetry.forEach(slice -> {
-            resendTransaction(slice, now);
+            resendTransactions(slice, now);
             storage.clear(slice);
 
             log.info("resend tx: {}", slice);
         });
     }
 
-    private void resendTransaction(long timeSliceId, LocalDateTime time) {
+    public void resendTransactions(long timeSliceId, LocalDateTime time) {
         List<Transaction> transactions = storage.getSent(timeSliceId);
 
         transactions.forEach(t -> {
             Transaction newTransaction = Transaction.builder()
                     .id(t.getId())
                     .type(t.getType())
+                    .value(t.getValue())
                     .account(t.getAccount())
                     .date(time)
                     .build();

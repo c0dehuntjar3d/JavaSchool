@@ -10,7 +10,9 @@ import lombok.experimental.UtilityClass;
 public class TimeSliceHelper {
 
     public static long getTimeSlice(LocalDateTime time, Duration timeout) {
-        long mills = time.atZone(ZoneOffset.UTC).toInstant().toEpochMilli();
-        return mills / timeout.toMillis();
+        long seconds = time.atZone(ZoneOffset.UTC).toInstant().getEpochSecond();
+        long timeoutSeconds = timeout.toSeconds();
+
+        return Math.round((double) seconds / timeoutSeconds);
     }
 }

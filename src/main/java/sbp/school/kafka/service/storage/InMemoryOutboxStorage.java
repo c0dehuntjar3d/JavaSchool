@@ -3,13 +3,16 @@ package sbp.school.kafka.service.storage;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
+import lombok.extern.slf4j.Slf4j;
 import sbp.school.kafka.model.Transaction;
 import sbp.school.kafka.service.checksum.ChecksumHelper;
 
+@Slf4j
 public class InMemoryOutboxStorage implements OutboxStorage {
 
     private final Map<Long, List<Transaction>> sent = new ConcurrentHashMap<>();
@@ -21,9 +24,14 @@ public class InMemoryOutboxStorage implements OutboxStorage {
         sent.computeIfAbsent(timeSliceKey, l -> new ArrayList<>()).add(tx);
 
         List<String> txIds = sent.get(timeSliceKey).stream().map(Transaction::getId).toList();
-        String checksumForTimeSlice = ChecksumHelper.calculateChecksum(txIds);
 
-        checksum.put(timeSliceKey, checksumForTimeSlice);
+        Optional<String> checksumForTimeSlice = ChecksumHelper.calculateChecksum(new ArrayList<>(txIds));
+        if (checksumForTimeSlice.isEmpty()) {
+            log.error("error while calculating checksum for timeSliceKey: {}, txIds: {}", timeSliceKey, txIds);
+            return;
+        }
+
+        checksum.put(timeSliceKey, checksumForTimeSlice.get());
     }
 
     @Override
@@ -63,9 +71,9 @@ public class InMemoryOutboxStorage implements OutboxStorage {
     @Override
     public Set<Long> getSentKeysFiltered(long timeoutTimeSlice) {
         return sent.keySet()
-            .stream()
-            .filter(key -> key < timeoutTimeSlice)
-            .collect(Collectors.toSet());
+                .stream()
+                .filter(key -> key < timeoutTimeSlice)
+                .collect(Collectors.toSet());
     }
 
     @Override
@@ -78,5 +86,5 @@ public class InMemoryOutboxStorage implements OutboxStorage {
     public List<Transaction> getSent(long key) {
         return sent.get(key);
     }
-    
+
 }

@@ -1,6 +1,7 @@
 package sbp.school.kafka.service.ack;
 
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -22,9 +23,10 @@ import sbp.school.kafka.config.transaction.KafkaTransactionProperties;
 import sbp.school.kafka.model.Ack;
 import sbp.school.kafka.service.AsyncCallback;
 import sbp.school.kafka.service.storage.OutboxStorage;
+import sbp.school.kafka.service.transaction.TransactionProducerService;
 
 @Slf4j
-public class AckConsumerService extends Thread {
+public class AckConsumerService {
 
     private final String topic;
     private final OutboxStorage storage;
@@ -33,10 +35,12 @@ public class AckConsumerService extends Thread {
     private final ExecutorService executorService;
 
     private final KafkaConsumer<String, Ack> consumer;
+    private final TransactionProducerService producer;
     private final Map<TopicPartition, OffsetAndMetadata> currentOffsets = new HashMap<>();
 
-    public AckConsumerService(Properties properties, OutboxStorage storage) {
+    public AckConsumerService(Properties properties, OutboxStorage storage, TransactionProducerService producer) {
         this.storage = storage;
+        this.producer = producer;
         this.executorService = Executors.newFixedThreadPool(1);
         this.consumer = new KafkaConsumer<>(properties);
         this.topic = KafkaTransactionProperties.getAcktTopioc();
@@ -52,7 +56,7 @@ public class AckConsumerService extends Thread {
     }
 
     private void consume() {
-        consumer.subscribe(Collections.singletonList(topic));
+        consumer.assign(Collections.singletonList(new TopicPartition(topic, 0)));
 
         try {
             while (running.get()) {
@@ -91,13 +95,13 @@ public class AckConsumerService extends Thread {
     public void processRecord(ConsumerRecord<String, Ack> record) {
         String producerId = new String(record.headers().lastHeader(KafkaProperties.PRODUCER_ID_PARAM).value());
         if (producerId.isBlank()) {
-            log.warn("missing producer id for record: {}", record.topic());
+            log.error("missing producer id for record: {}", record.topic());
             return;
         }
 
         Ack ack = record.value();
 
-        long timeSliceId = ack.getTimeSliceId();
+        long timeSliceId = ack.getId();
         String checksum = storage.getChecksum(timeSliceId);
 
         if (checksum == null) {
@@ -110,7 +114,7 @@ public class AckConsumerService extends Thread {
             log.info(
                     "ack recieved and processed success:\n ProducerId: {}, key: {}",
                     producerId,
-                    ack.getTimeSliceId());
+                    ack.getId());
             return;
         } else {
             log.warn(
@@ -119,6 +123,8 @@ public class AckConsumerService extends Thread {
                     timeSliceId,
                     ack.getChecksum(),
                     checksum);
+            producer.resendTransactions(timeSliceId, LocalDateTime.now());
+            storage.clear(timeSliceId);
         }
     }
 

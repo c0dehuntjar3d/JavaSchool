@@ -7,6 +7,7 @@ import sbp.school.kafka.config.KafkaProperties;
 import sbp.school.kafka.model.Ack;
 import sbp.school.kafka.model.Transaction;
 import sbp.school.kafka.service.storage.InMemoryOutboxStorage;
+import sbp.school.kafka.service.transaction.TransactionProducerService;
 import sbp.school.kafka.service.ack.AckConsumerService;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -44,7 +45,10 @@ public class AckConsumerServiceTest {
 
                 Properties props = KafkaProperties.getConsumerKafkaProperties();
 
-                AckConsumerService consumer = new AckConsumerService(props, storage);
+                AckConsumerService consumer = new AckConsumerService(
+                                props,
+                                storage,
+                                new TransactionProducerService("id", storage));
 
                 consumer.processRecord(record);
 
@@ -64,7 +68,6 @@ public class AckConsumerServiceTest {
                                 .value(BigDecimal.valueOf(100))
                                 .type(Transaction.TransactionType.CREDIT)
                                 .build());
-                storage.putChecksum(timeSliceKey, "expected-checksum");
 
                 Ack ack = new Ack(timeSliceKey, "wrong-checksum");
 
@@ -77,10 +80,14 @@ public class AckConsumerServiceTest {
                 record.headers().add(KafkaProperties.PRODUCER_ID_PARAM, "1".getBytes());
 
                 Properties props = KafkaProperties.getConsumerKafkaProperties();
-                AckConsumerService consumer = new AckConsumerService(props, storage);
+                AckConsumerService consumer = new AckConsumerService(
+                                props,
+                                storage,
+                                new TransactionProducerService("id", storage));
 
                 consumer.processRecord(record);
 
-                assertNotNull(storage.getChecksum(timeSliceKey));
+                assertNull(storage.getChecksum(timeSliceKey));
+                assertFalse(storage.isEmptySent());
         }
 }
