@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -14,6 +15,7 @@ import lombok.ToString;
 @Setter
 @Builder
 @ToString
+@EqualsAndHashCode
 @NoArgsConstructor
 @AllArgsConstructor
 public class Transaction {
@@ -33,10 +35,10 @@ public class Transaction {
         private String name;
     }
 
-    private long id;
+    private String id;
     private TransactionType type;
     private BigDecimal value;
     private String account;
-    private LocalDateTime date;    
+    private LocalDateTime date;
 
 }

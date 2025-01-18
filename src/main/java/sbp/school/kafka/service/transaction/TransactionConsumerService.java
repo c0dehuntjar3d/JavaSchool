@@ -12,37 +12,43 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
-import org.apache.kafka.clients.consumer.OffsetCommitCallback;
 import org.apache.kafka.common.TopicPartition;
 
 import lombok.extern.slf4j.Slf4j;
-import sbp.school.kafka.config.KafkaProperties;
-import sbp.school.kafka.config.transaction.KafkaConsumerCustomProperties;
+import sbp.school.kafka.config.transaction.KafkaConsumerProperties;
 import sbp.school.kafka.config.transaction.KafkaTransactionProperties;
 import sbp.school.kafka.model.Transaction;
+import sbp.school.kafka.service.AsyncCallback;
 import sbp.school.kafka.service.KafkaConsumerFactory;
+import sbp.school.kafka.service.storage.InboxStorage;
+import sbp.school.kafka.service.time.TimeSliceHelper;
 
 @Slf4j
 public class TransactionConsumerService {
-    
-    private final String transactionTopic;
-    private final ExecutorService executorService;
-    private final AtomicBoolean running = new AtomicBoolean(false); 
-    private final long duration;
 
-    public TransactionConsumerService() {
-        this.transactionTopic = KafkaTransactionProperties.getTopic();
+    private final String topic;
+    private final ExecutorService executorService;
+    private final AtomicBoolean running = new AtomicBoolean(false);
+    private final InboxStorage storage;
+    private final long duration;
+    private final Duration timeout;
+    private final Integer commitMaxProccessed;
+
+    public TransactionConsumerService(InboxStorage storage) {
+        this.storage = storage;
+        this.commitMaxProccessed = KafkaTransactionProperties.getCommitMaxProcessed();
+        this.timeout = KafkaTransactionProperties.getAckTime();
+        this.topic = KafkaTransactionProperties.getTopic();
         this.executorService = Executors.newFixedThreadPool(KafkaTransactionProperties.PARTITIONS.size());
-        this.duration = Long.parseLong(KafkaProperties.getProperty(KafkaConsumerCustomProperties.CONSUMER_COMMIT_TIMEOUT_PROPERTY));
+        this.duration = KafkaConsumerProperties.getCommitTimeout();
     }
-    
+
     public void start() {
         running.set(true);
-        
+
         for (Integer partitionIndex : KafkaTransactionProperties.PARTITIONS.values()) {
             executorService.submit(
-                () -> consumePartition(new TopicPartition(transactionTopic, partitionIndex))
-            );
+                    () -> consumePartition(new TopicPartition(topic, partitionIndex)));
         }
     }
 
@@ -57,35 +63,40 @@ public class TransactionConsumerService {
         log.info("Started consumer for partition {}", partition.partition());
 
         Map<TopicPartition, OffsetAndMetadata> currentOffsets = new HashMap<>();
+        OffsetAndMetadata prevOffsetAndMetadata = null;
+        AsyncCallback asyncCallback = new AsyncCallback(topic);
 
         try {
             while (running.get()) {
                 long startTime = System.currentTimeMillis();
-                int procceedRecords = 0;
-
+                int processedRecords = 0;
                 ConsumerRecords<String, Transaction> records = consumer.poll(Duration.ofMillis(100));
 
                 for (ConsumerRecord<String, Transaction> record : records) {
-                    processRecord(record);
+                    long timeSliceId = TimeSliceHelper.getTimeSlice(record.value().getDate(), timeout);
+                    storage.save(timeSliceId, record.value());
 
+                    processRecord(record);
                     currentOffsets.put(partition, new OffsetAndMetadata(record.offset() + 1));
-                    procceedRecords++;
-                    
-                    if (procceedRecords % 50 == 0 || System.currentTimeMillis() - startTime > duration) {
-                        consumer.commitAsync(currentOffsets, new AsyncCallback());
-                        startTime = System.currentTimeMillis();
-                    }
+                    processedRecords++;
                 }
 
-            }
+                boolean needCommit = processedRecords % commitMaxProccessed == 0 ||
+                        System.currentTimeMillis() - startTime > duration;
 
+                if (needCommit && currentOffsets.get(partition) != null &&
+                        !currentOffsets.get(partition).equals(prevOffsetAndMetadata)) {
+
+                    consumer.commitAsync(currentOffsets, asyncCallback);
+                    prevOffsetAndMetadata = currentOffsets.get(partition);
+
+                    startTime = System.currentTimeMillis();
+                    processedRecords = 0;
+                }
+            }
         } catch (Exception e) {
-            log.error(
-                "Error processing partition {}. {} {}", 
-                partition.partition(), 
-                Thread.currentThread().getName(), 
-                e
-            );
+            log.error("Error processing partition {}. {} {}", partition.partition(), Thread.currentThread().getName(),
+                    e);
             throw new RuntimeException(e);
         } finally {
             try {
@@ -103,30 +114,4 @@ public class TransactionConsumerService {
                 record.partition(), record.offset(), record.key(), record.value().getAccount());
     }
 
-    public void shutdown() {
-        executorService.shutdown();
-        log.info("Shutting down Kafka consumer service");
-    }
-
-    private class AsyncCallback implements OffsetCommitCallback {
-
-        @Override
-        public void onComplete(Map<TopicPartition, OffsetAndMetadata> offsets, Exception exception) {
-            if (exception != null) {
-                log.error(
-                    "Failed commit topic: {} | offsets: {} | Error: {}",
-                    transactionTopic,
-                    offsets,
-                    exception
-                );
-            } else {
-                log.error(
-                    "Success commit topic: {} | offsets: {}",
-                    transactionTopic,
-                    offsets
-                );
-            }
-        }
-
-    }
 }
