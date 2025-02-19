@@ -28,6 +28,13 @@ public class AckProducerService extends Thread {
         this.storage = storage;
     }
 
+    public AckProducerService(String id, KafkaProducer<String, Ack> producer, InboxStorage storage) {
+        this.topic = KafkaTransactionProperties.getAckTopic();
+        this.id = id;
+        this.producer = producer;
+        this.storage = storage;
+    }
+
     public void send(Ack ack) {
         try {
             ProducerRecord<String, Ack> record = new ProducerRecord<String, Ack>(topic, ack.getChecksum(), ack);

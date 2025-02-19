@@ -77,7 +77,7 @@ public class AckConsumerService {
 
         } catch (Exception e) {
             log.error(
-                    "Error processing {}. {}",
+                    "Error processing {}",
                     Thread.currentThread().getName(),
                     e);
             throw new RuntimeException(e);
@@ -115,7 +115,6 @@ public class AckConsumerService {
                     "ack recieved and processed success:\n ProducerId: {}, key: {}",
                     producerId,
                     ack.getId());
-            return;
         } else {
             log.warn(
                     "ack recieved and processed failure: checksum dismatch: \n ProducerId: {}, key: {}, checksum: {}, actual checksum {}",

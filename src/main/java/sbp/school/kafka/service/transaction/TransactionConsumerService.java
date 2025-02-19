@@ -8,6 +8,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import lombok.Getter;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
@@ -32,6 +33,7 @@ public class TransactionConsumerService {
     private final InboxStorage storage;
     private final long duration;
     private final Duration timeout;
+
     private final Integer commitMaxProccessed;
 
     public TransactionConsumerService(InboxStorage storage) {
@@ -56,7 +58,7 @@ public class TransactionConsumerService {
         running.set(false);
     }
 
-    private void consumePartition(TopicPartition partition) {
+    public void consumePartition(TopicPartition partition) {
         KafkaConsumer<String, Transaction> consumer = KafkaConsumerFactory.getConsumerForPartition(partition);
         consumer.assign(Collections.singletonList(partition));
 
@@ -95,7 +97,7 @@ public class TransactionConsumerService {
                 }
             }
         } catch (Exception e) {
-            log.error("Error processing partition {}. {} {}", partition.partition(), Thread.currentThread().getName(),
+            log.error("Error processing partition {}. {}", partition.partition(), Thread.currentThread().getName(),
                     e);
             throw new RuntimeException(e);
         } finally {

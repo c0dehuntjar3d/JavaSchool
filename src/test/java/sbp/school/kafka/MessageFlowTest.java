@@ -74,7 +74,7 @@ public class MessageFlowTest {
     }
 
     @AfterEach
-    private void close() {
+    public void close() {
         ackConsumer.close();
         consumer.close();
         producer.close();
@@ -89,7 +89,7 @@ public class MessageFlowTest {
         txs.forEach(producer::send);
 
         Assertions.assertFalse(outbox.isEmptySent());
-        Thread.sleep(Duration.ofMillis(500));
+        Thread.sleep(500);
 
         Assertions.assertEquals(outbox.getTimeSlices(), inbox.getTimeSlices());
 
@@ -101,7 +101,7 @@ public class MessageFlowTest {
             ackProducer.send(ack);
 
             try {
-                Thread.sleep(Duration.ofMillis(1000));
+                Thread.sleep(1000);
             } catch (InterruptedException e) {
             }
         });
@@ -126,7 +126,7 @@ public class MessageFlowTest {
 
         log.info(outbox.toString());
 
-        Thread.sleep(Duration.ofSeconds(7));
+        Thread.sleep(7000);
 
         outbox.getTimeSlices().forEach(timeSlice -> {
             Assertions.assertEquals(outbox.getSent(timeSlice).size(), inbox.getRecieved(timeSlice).size());
@@ -136,7 +136,7 @@ public class MessageFlowTest {
             ackProducer.send(ack);
 
             try {
-                Thread.sleep(Duration.ofMillis(1000));
+                Thread.sleep(1000);
             } catch (InterruptedException e) {
             }
         });

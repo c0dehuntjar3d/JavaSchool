@@ -1,4 +1,4 @@
-package sbp.school.kafka;
+package sbp.school.kafka.transaction;
 
 import org.junit.jupiter.api.Test;
 import sbp.school.kafka.model.Transaction;
@@ -27,10 +27,19 @@ public class TransactionProducerServiceTest {
                 .type(TransactionType.CREDIT)
                 .build();
 
+        Transaction transaction2 = Transaction.builder()
+                .id(UUID.randomUUID().toString())
+                .account("test-account2")
+                .date(LocalDateTime.now().minusMinutes(5))
+                .value(BigDecimal.valueOf(1000))
+                .type(TransactionType.TRANSFER)
+                .build();
+
         assertDoesNotThrow(() -> producer.send(transaction));
-        
+        assertDoesNotThrow(() -> producer.send(transaction2));
+
         assertFalse(storage.isEmptySent());
-        assertEquals(1, storage.getSentKeysFiltered(Long.MAX_VALUE).size());
+        assertEquals(2, storage.getSentKeysFiltered(Long.MAX_VALUE).size());
     }
 
     @Test
@@ -47,10 +56,9 @@ public class TransactionProducerServiceTest {
                 .build();
 
         producer.send(transaction);
+        assertFalse(storage.isEmptySent());
 
-        // Пытаемся повторно отправить транзакцию
-        producer.run();
-
-        assertTrue(storage.isEmptySent());
+        producer.start(); // повторная отправка сообщения
+        assertFalse(storage.isEmptySent());
     }
 }

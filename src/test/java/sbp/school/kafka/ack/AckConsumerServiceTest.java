@@ -1,4 +1,4 @@
-package sbp.school.kafka;
+package sbp.school.kafka.ack;
 
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.Test;
@@ -57,7 +57,7 @@ public class AckConsumerServiceTest {
         }
 
         @Test
-        public void testAckProcessingFailureDueToChecksumMismatch() {
+        public void testAckProcessingFailureDueToChecksumMatch() {
                 InMemoryOutboxStorage storage = new InMemoryOutboxStorage();
                 long timeSliceKey = 1L;
 
